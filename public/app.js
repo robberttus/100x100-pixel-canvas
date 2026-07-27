@@ -278,6 +278,7 @@
 
     if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
       const pixelId = gridY * GRID_SIZE + gridX;
+      const previousColor = grid[pixelId];
       
       // Update local state immediately for instant feedback
       grid[pixelId] = selectedColor;
@@ -288,15 +289,26 @@
       try {
         const { error } = await supabaseClient
           .from('pixels')
-          .upsert({
-            x: gridX,
-            y: gridY,
-            color: selectedColor,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'x,y' });
+          .upsert([
+            {
+              x: gridX,
+              y: gridY,
+              color: selectedColor,
+              updated_at: new Date().toISOString()
+            }
+          ]);
 
         if (error) {
-          console.error('Supabase write error:', error.message);
+          console.error('Supabase write error:', error.message || error);
+          // Revert pixel and cancel cooldown if save failed
+          grid[pixelId] = previousColor;
+          renderCanvas();
+          if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
+          palette.classList.remove('disabled');
+          cooldownBanner.classList.add('hidden');
+          localStorage.removeItem('pixel_cooldown_end');
+          document.cookie = 'pixel_cooldown_end=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          alert('Could not save pixel: ' + (error.message || 'Database error'));
         }
       } catch (err) {
         console.error('Network error writing pixel:', err);
