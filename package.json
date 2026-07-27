@@ -1,16 +1,8 @@
 {
-  "name": "pixel-canvas-100x100",
+  "name": "100x100-pixel-canvas",
   "version": "1.0.0",
   "description": "100x100 real-time collaborative pixel canvas",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "pg": "^8.11.5",
-    "socket.io": "^4.7.5"
+    "build": "echo 'Static build ready'"
   }
 }
