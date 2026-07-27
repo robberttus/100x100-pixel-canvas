@@ -1,5 +1,9 @@
 (function () {
-  const socket = io();
+  // Supabase Configuration
+  const SUPABASE_URL = 'https://uhiiufizfewxbjoswurs.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoaWl1Zml6ZmV3eGJqb3N3dXJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMTc4MDMsImV4cCI6MjEwMDY5MzgwM30.ungn6DhryM_Fzsi5M2CksVPg7jqI_JnkH7IEkQWaZ2U';
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   // Canvas & Context Setup
   const canvas = document.getElementById('pixel-canvas');
@@ -20,7 +24,7 @@
   const GRID_SIZE = 100;
   const CELL_SIZE = 10; // Canvas resolution: 1000x1000
   const COOLDOWN_DURATION_MS = 5 * 60 * 1000;
-  const CANVAS_BASE_SIZE = 600; // Displayed width/height of canvas element
+  const CANVAS_BASE_SIZE = 600;
 
   // Grid Data State
   const grid = new Array(GRID_SIZE * GRID_SIZE).fill('#FFFFFF');
@@ -55,19 +59,6 @@
     const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
     return match ? match[2] : null;
   }
-
-  // Unique Device ID generation (Persistent per device/browser)
-  function getOrCreateDeviceId() {
-    let id = localStorage.getItem('pixel_device_id') || getCookie('pixel_device_id');
-    if (!id) {
-      id = 'dev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
-      localStorage.setItem('pixel_device_id', id);
-      setCookie('pixel_device_id', id, 365 * 24 * 60 * 60 * 1000);
-    }
-    return id;
-  }
-
-  const deviceId = getOrCreateDeviceId();
 
   // ----------------------------------------------------
   // 1. Initial Popup Modal Logic
@@ -114,7 +105,6 @@
     }
   }
 
-  // Clamps pan coordinates so canvas grid NEVER gets dragged off screen
   function clampPan() {
     const rect = viewport.getBoundingClientRect();
     const scaledSize = CANVAS_BASE_SIZE * scale;
@@ -139,7 +129,6 @@
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const newScale = Math.min(Math.max(0.4, scale * zoomFactor), 15);
 
-    // Zoom centered relative to mouse cursor
     const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.width / 2;
     const mouseY = e.clientY - rect.height / 2;
@@ -151,7 +140,6 @@
     updateTransform();
   }, { passive: false });
 
-  // Mouse Dragging (Pan)
   viewport.addEventListener('mousedown', (e) => {
     if (e.target.closest('.toolbar-wrapper') || e.target.closest('#info-btn') || e.target.closest('.modal-overlay')) return;
     isDragging = true;
@@ -173,7 +161,6 @@
     if (!isDragging) return;
     isDragging = false;
 
-    // Check if it was a click instead of a pan/drag
     const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
     if (dist < 6) {
       handleCanvasClick(e.clientX, e.clientY);
@@ -211,13 +198,11 @@
       initialPinchScale = scale;
       initialPinchPan = { x: panX, y: panY };
 
-      // Calculate initial touch focal midpoint relative to viewport center
       const rect = viewport.getBoundingClientRect();
       const center = getTouchCenter(e.touches);
       const focalX = center.x - rect.width / 2;
       const focalY = center.y - rect.height / 2;
 
-      // Position of touch focal point relative to canvas center at initial scale
       initialCanvasFocal = {
         x: (focalX - panX) / scale,
         y: (focalY - panY) / scale
@@ -235,18 +220,15 @@
     } else if (e.touches.length === 2 && initialPinchDistance) {
       e.preventDefault();
 
-      // 1. Calculate new scale ratio
       const currentDist = getTouchDistance(e.touches);
       const zoomRatio = currentDist / initialPinchDistance;
       const newScale = Math.min(Math.max(0.4, initialPinchScale * zoomRatio), 15);
 
-      // 2. Calculate current touch focal midpoint relative to viewport center
       const rect = viewport.getBoundingClientRect();
       const currentCenter = getTouchCenter(e.touches);
       const currentFocalX = currentCenter.x - rect.width / 2;
       const currentFocalY = currentCenter.y - rect.height / 2;
 
-      // 3. Anchor canvas focal point directly under current touch midpoint
       scale = newScale;
       panX = currentFocalX - initialCanvasFocal.x * scale;
       panY = currentFocalY - initialCanvasFocal.y * scale;
@@ -267,7 +249,6 @@
       isDragging = false;
       initialPinchDistance = null;
     } else if (e.touches.length === 1) {
-      // Transition smoothly back to 1-finger panning
       isDragging = true;
       dragStartX = e.touches[0].clientX - panX;
       dragStartY = e.touches[0].clientY - panY;
@@ -276,9 +257,9 @@
   });
 
   // ----------------------------------------------------
-  // 6. Handle Pixel Placement Click
+  // 6. Handle Pixel Placement Click (Supabase Upsert)
   // ----------------------------------------------------
-  function handleCanvasClick(clientX, clientY) {
+  async function handleCanvasClick(clientX, clientY) {
     if (palette.classList.contains('disabled')) return; // Cooldown active
 
     const rect = canvas.getBoundingClientRect();
@@ -296,7 +277,31 @@
     const gridY = Math.floor((relativeY / rect.height) * GRID_SIZE);
 
     if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
-      socket.emit('place_pixel', { x: gridX, y: gridY, color: selectedColor, deviceId: deviceId });
+      const pixelId = gridY * GRID_SIZE + gridX;
+      
+      // Update local state immediately for instant feedback
+      grid[pixelId] = selectedColor;
+      renderCanvas();
+      startCooldownTimer(COOLDOWN_DURATION_MS);
+
+      // Save to Supabase Realtime Database
+      try {
+        const { error } = await supabaseClient
+          .from('pixels')
+          .upsert({
+            id: pixelId,
+            x: gridX,
+            y: gridY,
+            color: selectedColor,
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('Supabase write error:', error.message);
+        }
+      } catch (err) {
+        console.error('Network error writing pixel:', err);
+      }
     }
   }
 
@@ -343,33 +348,50 @@
   }
 
   // ----------------------------------------------------
-  // 8. Socket.io Real-Time Synchronization
+  // 8. Supabase Initial Data Fetch & Realtime Synchronization
   // ----------------------------------------------------
-  socket.on('init_grid', (fullGrid) => {
-    fullGrid.forEach((color, idx) => grid[idx] = color);
-    renderCanvas();
-    restoreCooldownIfActive();
-    socket.emit('check_cooldown', deviceId);
-  });
+  async function initSupabaseData() {
+    try {
+      // 1. Fetch initial pixels from Supabase
+      const { data, error } = await supabaseClient
+        .from('pixels')
+        .select('id, x, y, color');
 
-  socket.on('pixel_updated', ({ x, y, color }) => {
-    grid[y * GRID_SIZE + x] = color;
-    renderCanvas();
-  });
-
-  socket.on('cooldown_status', ({ active, remainingMs }) => {
-    if (active && remainingMs > 0) {
-      startCooldownTimer(remainingMs);
+      if (data && Array.isArray(data)) {
+        data.forEach(p => {
+          if (typeof p.x === 'number' && typeof p.y === 'number' && p.x >= 0 && p.x < GRID_SIZE && p.y >= 0 && p.y < GRID_SIZE) {
+            grid[p.y * GRID_SIZE + p.x] = p.color;
+          }
+        });
+        renderCanvas();
+      }
+    } catch (err) {
+      console.error('Error fetching initial pixels:', err);
     }
-  });
 
-  socket.on('cooldown_error', ({ remainingMs }) => {
-    startCooldownTimer(remainingMs);
-  });
+    // 2. Subscribe to Supabase Realtime postgres_changes
+    supabaseClient
+      .channel('public:pixels')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pixels' },
+        (payload) => {
+          const p = payload.new;
+          if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+            grid[p.y * GRID_SIZE + p.x] = p.color;
+            renderCanvas();
+          }
+        }
+      )
+      .subscribe();
+  }
 
-  // Check first visit popup
+  // Initialize
   checkFirstVisitModal();
+  restoreCooldownIfActive();
+  renderCanvas();
   updateTransform();
+  initSupabaseData();
 
   window.addEventListener('resize', updateTransform);
 })();
