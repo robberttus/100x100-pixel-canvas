@@ -35,11 +35,11 @@
   let dragStartY = 0;
   let pointerDownPos = { x: 0, y: 0 };
 
-  // Multi-touch Pinch & Pan State (Google Maps Style)
+  // Multi-touch Pinch & Pan State (Focal Point Tracking like Google Maps)
   let initialPinchDistance = null;
   let initialPinchScale = 1.0;
-  let initialPinchCenter = { x: 0, y: 0 };
   let initialPinchPan = { x: 0, y: 0 };
+  let initialCanvasFocal = { x: 0, y: 0 };
 
   // Cooldown State
   let cooldownTimerInterval = null;
@@ -119,7 +119,6 @@
     const rect = viewport.getBoundingClientRect();
     const scaledSize = CANVAS_BASE_SIZE * scale;
 
-    // Allow canvas center to move at most until edge reaches 35% of screen
     const maxPanX = Math.max(0, (scaledSize - rect.width) / 2) + (rect.width * 0.35);
     const maxPanY = Math.max(0, (scaledSize - rect.height) / 2) + (rect.height * 0.35);
 
@@ -140,7 +139,7 @@
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
     const newScale = Math.min(Math.max(0.4, scale * zoomFactor), 15);
 
-    // Zoom relative to mouse cursor
+    // Zoom centered relative to mouse cursor
     const rect = viewport.getBoundingClientRect();
     const mouseX = e.clientX - rect.width / 2;
     const mouseY = e.clientY - rect.height / 2;
@@ -180,7 +179,7 @@
   });
 
   // ----------------------------------------------------
-  // 5. Mobile Touch Controls (Simultaneous Pinch & Pan - Google Maps Style)
+  // 5. Mobile Touch Controls (True Focal Point Pinch Zoom like Google Maps)
   // ----------------------------------------------------
   function getTouchDistance(touches) {
     return Math.hypot(
@@ -208,8 +207,19 @@
       isDragging = false;
       initialPinchDistance = getTouchDistance(e.touches);
       initialPinchScale = scale;
-      initialPinchCenter = getTouchCenter(e.touches);
       initialPinchPan = { x: panX, y: panY };
+
+      // Calculate initial touch focal midpoint relative to viewport center
+      const rect = viewport.getBoundingClientRect();
+      const center = getTouchCenter(e.touches);
+      const focalX = center.x - rect.width / 2;
+      const focalY = center.y - rect.height / 2;
+
+      // Position of touch focal point relative to canvas center at initial scale
+      initialCanvasFocal = {
+        x: (focalX - panX) / scale,
+        y: (focalY - panY) / scale
+      };
     }
   }, { passive: false });
 
@@ -221,18 +231,23 @@
       panY = e.touches[0].clientY - dragStartY;
       updateTransform();
     } else if (e.touches.length === 2 && initialPinchDistance) {
-      // 1. Simultaneous Zooming
+      e.preventDefault();
+
+      // 1. Calculate new scale ratio
       const currentDist = getTouchDistance(e.touches);
       const zoomRatio = currentDist / initialPinchDistance;
-      scale = Math.min(Math.max(0.4, initialPinchScale * zoomRatio), 15);
+      const newScale = Math.min(Math.max(0.4, initialPinchScale * zoomRatio), 15);
 
-      // 2. Simultaneous Panning (Midpoint Tracking like Google Maps)
+      // 2. Calculate current touch focal midpoint relative to viewport center
+      const rect = viewport.getBoundingClientRect();
       const currentCenter = getTouchCenter(e.touches);
-      const deltaX = currentCenter.x - initialPinchCenter.x;
-      const deltaY = currentCenter.y - initialPinchCenter.y;
+      const currentFocalX = currentCenter.x - rect.width / 2;
+      const currentFocalY = currentCenter.y - rect.height / 2;
 
-      panX = initialPinchPan.x + deltaX;
-      panY = initialPinchPan.y + deltaY;
+      // 3. Anchor canvas focal point directly under current touch midpoint
+      scale = newScale;
+      panX = currentFocalX - initialCanvasFocal.x * scale;
+      panY = currentFocalY - initialCanvasFocal.y * scale;
 
       updateTransform();
     }
