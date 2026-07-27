@@ -289,12 +289,11 @@
         const { error } = await supabaseClient
           .from('pixels')
           .upsert({
-            id: pixelId,
             x: gridX,
             y: gridY,
             color: selectedColor,
             updated_at: new Date().toISOString()
-          });
+          }, { onConflict: 'x,y' });
 
         if (error) {
           console.error('Supabase write error:', error.message);
@@ -352,10 +351,11 @@
   // ----------------------------------------------------
   async function initSupabaseData() {
     try {
-      // 1. Fetch initial pixels from Supabase
+      // 1. Fetch initial pixels from Supabase (up to 10,000 pixels)
       const { data, error } = await supabaseClient
         .from('pixels')
-        .select('id, x, y, color');
+        .select('x, y, color')
+        .limit(10000);
 
       if (data && Array.isArray(data)) {
         data.forEach(p => {
