@@ -130,7 +130,8 @@ body {
   transform: translateX(-50%);
   z-index: 95;
   max-width: 92vw;
-  touch-action: auto;
+  touch-action: pan-x !important; /* Allow touch scrolling on mobile */
+  -webkit-overflow-scrolling: touch;
 }
 
 .color-palette {
@@ -147,6 +148,8 @@ body {
   -ms-overflow-style: none; /* IE */
   backdrop-filter: blur(10px);
   transition: opacity 0.3s ease, filter 0.3s ease;
+  touch-action: pan-x !important; /* Enable mobile horizontal swipe */
+  -webkit-overflow-scrolling: touch;
 }
 
 .color-palette::-webkit-scrollbar {
@@ -155,8 +158,8 @@ body {
 
 /* Color Swatches */
 .color-swatch {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: 1.5px solid #000000; /* Black border around each color */
   cursor: pointer;
@@ -164,6 +167,7 @@ body {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   position: relative;
   outline: none;
+  touch-action: auto;
 }
 
 .color-swatch:hover {
