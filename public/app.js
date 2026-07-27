@@ -162,12 +162,14 @@
 
   window.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
+    viewport.classList.add('is-dragging');
     panX = e.clientX - dragStartX;
     panY = e.clientY - dragStartY;
     updateTransform();
   });
 
   window.addEventListener('mouseup', (e) => {
+    viewport.classList.remove('is-dragging');
     if (!isDragging) return;
     isDragging = false;
 
