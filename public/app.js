@@ -20,6 +20,7 @@
   const GRID_SIZE = 100;
   const CELL_SIZE = 10; // Canvas resolution: 1000x1000
   const COOLDOWN_DURATION_MS = 5 * 60 * 1000;
+  const CANVAS_BASE_SIZE = 600; // Displayed width/height of canvas element
 
   // Grid Data State
   const grid = new Array(GRID_SIZE * GRID_SIZE).fill('#FFFFFF');
@@ -33,8 +34,12 @@
   let dragStartX = 0;
   let dragStartY = 0;
   let pointerDownPos = { x: 0, y: 0 };
+
+  // Multi-touch Pinch & Pan State (Google Maps Style)
   let initialPinchDistance = null;
   let initialPinchScale = 1.0;
+  let initialPinchCenter = { x: 0, y: 0 };
+  let initialPinchPan = { x: 0, y: 0 };
 
   // Cooldown State
   let cooldownTimerInterval = null;
@@ -96,7 +101,7 @@
   });
 
   // ----------------------------------------------------
-  // 3. Canvas Rendering
+  // 3. Canvas Rendering & Viewport Boundary Clamping
   // ----------------------------------------------------
   function renderCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -109,7 +114,21 @@
     }
   }
 
+  // Clamps pan coordinates so canvas grid NEVER gets dragged off screen
+  function clampPan() {
+    const rect = viewport.getBoundingClientRect();
+    const scaledSize = CANVAS_BASE_SIZE * scale;
+
+    // Allow canvas center to move at most until edge reaches 35% of screen
+    const maxPanX = Math.max(0, (scaledSize - rect.width) / 2) + (rect.width * 0.35);
+    const maxPanY = Math.max(0, (scaledSize - rect.height) / 2) + (rect.height * 0.35);
+
+    panX = Math.min(Math.max(panX, -maxPanX), maxPanX);
+    panY = Math.min(Math.max(panY, -maxPanY), maxPanY);
+  }
+
   function updateTransform() {
+    clampPan();
     canvasContainer.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
   }
 
@@ -135,7 +154,7 @@
 
   // Mouse Dragging (Pan)
   viewport.addEventListener('mousedown', (e) => {
-    if (e.target.closest('.toolbar-wrapper') || e.target.closest('#info-btn')) return;
+    if (e.target.closest('.toolbar-wrapper') || e.target.closest('#info-btn') || e.target.closest('.modal-overlay')) return;
     isDragging = true;
     dragStartX = e.clientX - panX;
     dragStartY = e.clientY - panY;
@@ -161,13 +180,20 @@
   });
 
   // ----------------------------------------------------
-  // 5. Mobile Touch Controls (Pinch-to-zoom & Swipe Pan)
+  // 5. Mobile Touch Controls (Simultaneous Pinch & Pan - Google Maps Style)
   // ----------------------------------------------------
   function getTouchDistance(touches) {
     return Math.hypot(
       touches[0].clientX - touches[1].clientX,
       touches[0].clientY - touches[1].clientY
     );
+  }
+
+  function getTouchCenter(touches) {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    };
   }
 
   viewport.addEventListener('touchstart', (e) => {
@@ -182,6 +208,8 @@
       isDragging = false;
       initialPinchDistance = getTouchDistance(e.touches);
       initialPinchScale = scale;
+      initialPinchCenter = getTouchCenter(e.touches);
+      initialPinchPan = { x: panX, y: panY };
     }
   }, { passive: false });
 
@@ -193,9 +221,19 @@
       panY = e.touches[0].clientY - dragStartY;
       updateTransform();
     } else if (e.touches.length === 2 && initialPinchDistance) {
+      // 1. Simultaneous Zooming
       const currentDist = getTouchDistance(e.touches);
       const zoomRatio = currentDist / initialPinchDistance;
       scale = Math.min(Math.max(0.4, initialPinchScale * zoomRatio), 15);
+
+      // 2. Simultaneous Panning (Midpoint Tracking like Google Maps)
+      const currentCenter = getTouchCenter(e.touches);
+      const deltaX = currentCenter.x - initialPinchCenter.x;
+      const deltaY = currentCenter.y - initialPinchCenter.y;
+
+      panX = initialPinchPan.x + deltaX;
+      panY = initialPinchPan.y + deltaY;
+
       updateTransform();
     }
   }, { passive: false });
@@ -210,6 +248,12 @@
         }
       }
       isDragging = false;
+      initialPinchDistance = null;
+    } else if (e.touches.length === 1) {
+      // Transition smoothly back to 1-finger panning
+      isDragging = true;
+      dragStartX = e.touches[0].clientX - panX;
+      dragStartY = e.touches[0].clientY - panY;
       initialPinchDistance = null;
     }
   });
@@ -309,4 +353,6 @@
   // Check first visit popup
   checkFirstVisitModal();
   updateTransform();
+
+  window.addEventListener('resize', updateTransform);
 })();
