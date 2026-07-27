@@ -32,10 +32,10 @@ const ALLOWED_COLORS = new Set([
 // 100x100 grid array initialized to white (#FFFFFF)
 const grid = new Array(GRID_SIZE * GRID_SIZE).fill('#FFFFFF');
 
-// In-memory IP tracking for 5-minute cooldown
-const ipCooldowns = new Map();
+// In-memory Device ID tracking for 5-minute cooldown (Device-independent)
+const deviceCooldowns = new Map();
 
-// Database Pool Setup (PostgreSQL on Render or fallback local JSON file)
+// Database Pool Setup (PostgreSQL on Render/Supabase or fallback local JSON file)
 let pool = null;
 const dbUrl = process.env.DATABASE_URL;
 
@@ -112,47 +112,40 @@ async function savePixel(x, y, color) {
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper to extract IP address cleanly (handling proxies on Render)
-function getClientIp(req, socket) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  return socket.handshake.address || req.socket.remoteAddress;
-}
-
 // Socket.io real-time connection logic
 io.on('connection', (socket) => {
-  const clientIp = getClientIp(socket.request, socket);
-
   // Send current grid state on connect
   socket.emit('init_grid', grid);
 
-  // Send client's current cooldown state if active
-  const lastPlaced = ipCooldowns.get(clientIp) || 0;
-  const now = Date.now();
-  const elapsed = now - lastPlaced;
-  if (elapsed < COOLDOWN_MS) {
-    const remainingMs = COOLDOWN_MS - elapsed;
-    socket.emit('cooldown_status', { active: true, remainingMs });
-  }
+  // Check cooldown status for a specific device ID
+  socket.on('check_cooldown', (deviceId) => {
+    if (!deviceId) return;
+    const lastPlaced = deviceCooldowns.get(deviceId) || 0;
+    const now = Date.now();
+    const elapsed = now - lastPlaced;
+    if (elapsed < COOLDOWN_MS) {
+      const remainingMs = COOLDOWN_MS - elapsed;
+      socket.emit('cooldown_status', { active: true, remainingMs });
+    }
+  });
 
   // Handle pixel placement attempt
   socket.on('place_pixel', async (data) => {
-    const { x, y, color } = data;
+    const { x, y, color, deviceId } = data;
 
     // 1. Validation
     if (
       typeof x !== 'number' || typeof y !== 'number' ||
       x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE ||
-      !ALLOWED_COLORS.has(color)
+      !ALLOWED_COLORS.has(color) ||
+      !deviceId || typeof deviceId !== 'string'
     ) {
-      return socket.emit('pixel_error', { message: 'Invalid pixel coordinates or color.' });
+      return socket.emit('pixel_error', { message: 'Invalid placement data.' });
     }
 
-    // 2. Cooldown check per IP
+    // 2. Cooldown check per Device ID (independent per device)
     const currentTime = Date.now();
-    const lastPlacement = ipCooldowns.get(clientIp) || 0;
+    const lastPlacement = deviceCooldowns.get(deviceId) || 0;
     const timePassed = currentTime - lastPlacement;
 
     if (timePassed < COOLDOWN_MS) {
@@ -160,10 +153,10 @@ io.on('connection', (socket) => {
       return socket.emit('cooldown_error', { remainingMs });
     }
 
-    // 3. Update state & register cooldown
+    // 3. Update state & register cooldown for this specific device
     const index = y * GRID_SIZE + x;
     grid[index] = color;
-    ipCooldowns.set(clientIp, currentTime);
+    deviceCooldowns.set(deviceId, currentTime);
 
     // Save to DB / file persistence
     await savePixel(x, y, color);
@@ -180,6 +173,5 @@ io.on('connection', (socket) => {
 initStorage().then(() => {
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-    console.log(`Access website at http://localhost:${PORT}`);
   });
 });
