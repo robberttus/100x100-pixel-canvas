@@ -42,11 +42,12 @@ const dbUrl = process.env.DATABASE_URL;
 if (dbUrl) {
   pool = new Pool({
     connectionString: dbUrl,
-    ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+    ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+    connectionTimeoutMillis: 5000 // 5 sec connection timeout
   });
 }
 
-// Initialize persistence storage
+// Initialize persistence storage asynchronously
 async function initStorage() {
   if (pool) {
     try {
@@ -68,22 +69,26 @@ async function initStorage() {
       });
       console.log(`Loaded ${res.rows.length} pixels from PostgreSQL database.`);
     } catch (err) {
-      console.error('PostgreSQL initialization error:', err.message);
+      console.error('PostgreSQL initialization warning:', err.message);
+      loadJsonFallback();
     }
   } else {
-    // Local JSON fallback
-    const jsonPath = path.join(__dirname, 'pixels.json');
-    if (fs.existsSync(jsonPath)) {
-      try {
-        const raw = fs.readFileSync(jsonPath, 'utf8');
-        const saved = JSON.parse(raw);
-        if (Array.isArray(saved) && saved.length === GRID_SIZE * GRID_SIZE) {
-          saved.forEach((c, idx) => grid[idx] = c);
-          console.log('Loaded pixels from local pixels.json file.');
-        }
-      } catch (e) {
-        console.error('Error reading pixels.json:', e.message);
+    loadJsonFallback();
+  }
+}
+
+function loadJsonFallback() {
+  const jsonPath = path.join(__dirname, 'pixels.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const raw = fs.readFileSync(jsonPath, 'utf8');
+      const saved = JSON.parse(raw);
+      if (Array.isArray(saved) && saved.length === GRID_SIZE * GRID_SIZE) {
+        saved.forEach((c, idx) => grid[idx] = c);
+        console.log('Loaded pixels from local pixels.json file.');
       }
+    } catch (e) {
+      console.error('Error reading pixels.json:', e.message);
     }
   }
 }
@@ -109,8 +114,16 @@ async function savePixel(x, y, color) {
   }
 }
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files with cache headers disabled for instant updates
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0
+}));
+
+// Root and wildcard route handlers for clean navigation
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // Socket.io real-time connection logic
 io.on('connection', (socket) => {
@@ -169,9 +182,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server after initializing storage
-initStorage().then(() => {
-  server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
+// Start server IMMEDIATELY so health check passes without delay
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+  // Initialize storage asynchronously
+  initStorage();
 });
