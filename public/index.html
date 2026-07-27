@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>100x100 Collaborative Pixel Grid</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top Right Info Button -->
+  <button id="info-btn" class="info-circle-btn" title="Information" aria-label="Information">i</button>
+
+  <!-- Main Viewport Container for Grid -->
+  <div id="viewport" class="viewport">
+    <div id="canvas-container" class="canvas-container">
+      <canvas id="pixel-canvas" width="1000" height="1000"></canvas>
+    </div>
+  </div>
+
+  <!-- Cooldown Status Overlay -->
+  <div id="cooldown-banner" class="cooldown-banner hidden">
+    <span class="cooldown-label">COOLDOWN ACTIVE</span>
+    <span id="cooldown-timer" class="cooldown-timer">05:00</span>
+  </div>
+
+  <!-- Floating Bottom Color Palette Toolbar -->
+  <div id="toolbar-wrapper" class="toolbar-wrapper">
+    <div id="color-palette" class="color-palette">
+      <button class="color-swatch active" data-color="#FF0000" style="background-color: #FF0000;" title="Red" aria-label="Red"></button>
+      <button class="color-swatch" data-color="#FFA500" style="background-color: #FFA500;" title="Orange" aria-label="Orange"></button>
+      <button class="color-swatch" data-color="#FFFF00" style="background-color: #FFFF00;" title="Yellow" aria-label="Yellow"></button>
+      <button class="color-swatch" data-color="#90EE90" style="background-color: #90EE90;" title="Light Green" aria-label="Light Green"></button>
+      <button class="color-swatch" data-color="#008000" style="background-color: #008000;" title="Dark Green" aria-label="Dark Green"></button>
+      <button class="color-swatch" data-color="#ADD8E6" style="background-color: #ADD8E6;" title="Light Blue" aria-label="Light Blue"></button>
+      <button class="color-swatch" data-color="#0000FF" style="background-color: #0000FF;" title="Dark Blue" aria-label="Dark Blue"></button>
+      <button class="color-swatch" data-color="#FFC0CB" style="background-color: #FFC0CB;" title="Pink" aria-label="Pink"></button>
+      <button class="color-swatch" data-color="#800080" style="background-color: #800080;" title="Purple" aria-label="Purple"></button>
+      <button class="color-swatch" data-color="#000000" style="background-color: #000000;" title="Black" aria-label="Black"></button>
+      <button class="color-swatch" data-color="#FFFFFF" style="background-color: #FFFFFF;" title="White" aria-label="White"></button>
+    </div>
+  </div>
+
+  <!-- First Visit / Info Modal -->
+  <div id="info-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2>Information</h2>
+      <p>You can change the color of 1 pixel every 5 minutes on this 100x100 grid.</p>
+      <button id="modal-close-btn" class="modal-btn">Got it</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
