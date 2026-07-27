@@ -256,10 +256,30 @@
     }
   });
 
+  // Debounce helper to prevent double-triggering on touch devices
+  let lastClickTime = 0;
+
+  function cancelCooldownAndRevert(pixelId, previousColor, errorMessage) {
+    grid[pixelId] = previousColor;
+    renderCanvas();
+    if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
+    palette.classList.remove('disabled');
+    cooldownBanner.classList.add('hidden');
+    localStorage.removeItem('pixel_cooldown_end');
+    document.cookie = 'pixel_cooldown_end=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    if (errorMessage) {
+      alert('Could not save pixel: ' + errorMessage);
+    }
+  }
+
   // ----------------------------------------------------
   // 6. Handle Pixel Placement Click (Supabase Upsert)
   // ----------------------------------------------------
   async function handleCanvasClick(clientX, clientY) {
+    const now = Date.now();
+    if (now - lastClickTime < 300) return; // Prevent double-triggering
+    lastClickTime = now;
+
     if (palette.classList.contains('disabled')) return; // Cooldown active
 
     const rect = canvas.getBoundingClientRect();
@@ -296,22 +316,15 @@
               color: selectedColor,
               updated_at: new Date().toISOString()
             }
-          ]);
+          ], { onConflict: 'x,y' });
 
         if (error) {
           console.error('Supabase write error:', error.message || error);
-          // Revert pixel and cancel cooldown if save failed
-          grid[pixelId] = previousColor;
-          renderCanvas();
-          if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
-          palette.classList.remove('disabled');
-          cooldownBanner.classList.add('hidden');
-          localStorage.removeItem('pixel_cooldown_end');
-          document.cookie = 'pixel_cooldown_end=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-          alert('Could not save pixel: ' + (error.message || 'Database error'));
+          cancelCooldownAndRevert(pixelId, previousColor, error.message || 'Database error');
         }
       } catch (err) {
         console.error('Network error writing pixel:', err);
+        cancelCooldownAndRevert(pixelId, previousColor, err.message || 'Network error');
       }
     }
   }
