@@ -57,14 +57,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: grab;
+  cursor: default;
   position: absolute;
   top: 0;
   left: 0;
 }
 
-.viewport:active {
-  cursor: grabbing;
+/* Active dragging state */
+.viewport.is-dragging, .viewport.is-dragging * {
+  cursor: grabbing !important;
 }
 
 .canvas-container {
@@ -84,6 +85,7 @@ body {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   image-rendering: -moz-crisp-edges;
+  cursor: crosshair; /* Precise cursor for targetting pixels */
 }
 
 /* Cooldown Banner */
