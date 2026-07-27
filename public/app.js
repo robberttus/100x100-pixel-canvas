@@ -39,6 +39,31 @@
   // Cooldown State
   let cooldownTimerInterval = null;
 
+  // Cookie helpers
+  function setCookie(name, value, ms) {
+    const date = new Date();
+    date.setTime(date.getTime() + ms);
+    document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+  }
+
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+  }
+
+  // Unique Device ID generation (Persistent per device/browser)
+  function getOrCreateDeviceId() {
+    let id = localStorage.getItem('pixel_device_id') || getCookie('pixel_device_id');
+    if (!id) {
+      id = 'dev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('pixel_device_id', id);
+      setCookie('pixel_device_id', id, 365 * 24 * 60 * 60 * 1000);
+    }
+    return id;
+  }
+
+  const deviceId = getOrCreateDeviceId();
+
   // ----------------------------------------------------
   // 1. Initial Popup Modal Logic
   // ----------------------------------------------------
@@ -210,24 +235,13 @@
     const gridY = Math.floor((relativeY / rect.height) * GRID_SIZE);
 
     if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
-      socket.emit('place_pixel', { x: gridX, y: gridY, color: selectedColor });
+      socket.emit('place_pixel', { x: gridX, y: gridY, color: selectedColor, deviceId: deviceId });
     }
   }
 
   // ----------------------------------------------------
   // 7. Cooldown Manager (Timer & Cookie/LocalStorage Backup)
   // ----------------------------------------------------
-  function setCookie(name, value, ms) {
-    const date = new Date();
-    date.setTime(date.getTime() + ms);
-    document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
-  }
-
-  function getCookie(name) {
-    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-    return match ? match[2] : null;
-  }
-
   function startCooldownTimer(durationMs) {
     if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
 
@@ -274,6 +288,7 @@
     fullGrid.forEach((color, idx) => grid[idx] = color);
     renderCanvas();
     restoreCooldownIfActive();
+    socket.emit('check_cooldown', deviceId);
   });
 
   socket.on('pixel_updated', ({ x, y, color }) => {
