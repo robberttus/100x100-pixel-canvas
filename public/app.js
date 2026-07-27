@@ -347,11 +347,12 @@
   }
 
   // ----------------------------------------------------
-  // 8. Supabase Initial Data Fetch & Realtime Synchronization
+  // 8. Supabase Data Fetch & Realtime Synchronization
   // ----------------------------------------------------
-  async function initSupabaseData() {
+  let realtimeChannel = null;
+
+  async function fetchAllPixels() {
     try {
-      // 1. Fetch initial pixels from Supabase (up to 10,000 pixels)
       const { data, error } = await supabaseClient
         .from('pixels')
         .select('x, y, color')
@@ -366,11 +367,16 @@
         renderCanvas();
       }
     } catch (err) {
-      console.error('Error fetching initial pixels:', err);
+      console.error('Error fetching pixels:', err);
+    }
+  }
+
+  function setupRealtimeSubscription() {
+    if (realtimeChannel) {
+      supabaseClient.removeChannel(realtimeChannel);
     }
 
-    // 2. Subscribe to Supabase Realtime postgres_changes
-    supabaseClient
+    realtimeChannel = supabaseClient
       .channel('public:pixels')
       .on(
         'postgres_changes',
@@ -383,8 +389,32 @@
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchAllPixels();
+        }
+      });
   }
+
+  async function initSupabaseData() {
+    await fetchAllPixels();
+    setupRealtimeSubscription();
+  }
+
+  // Auto-refresh data and reconnect when tab becomes visible / phone unlocks
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      fetchAllPixels();
+      setupRealtimeSubscription();
+    }
+  });
+
+  // Background safety heartbeat sync every 30 seconds
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      fetchAllPixels();
+    }
+  }, 30000);
 
   // Initialize
   checkFirstVisitModal();
