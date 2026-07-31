@@ -305,18 +305,18 @@
       renderCanvas();
       startCooldownTimer(COOLDOWN_DURATION_MS);
 
-      // Save to Supabase Realtime Database
+      // Save to Supabase Realtime Database (Workaround for Primary Key constraint)
       try {
         const { error } = await supabaseClient
           .from('pixels')
           .upsert([
             {
-              x: gridX,
-              y: gridY,
+              x: pixelId,
+              y: 0, // y is no longer used for coordinates in the DB
               color: selectedColor,
               updated_at: new Date().toISOString()
             }
-          ], { onConflict: 'x,y' });
+          ], { onConflict: 'x' });
 
         if (error) {
           console.error('Supabase write error:', error.message || error);
@@ -385,8 +385,11 @@
 
       if (data && Array.isArray(data)) {
         data.forEach(p => {
-          if (typeof p.x === 'number' && typeof p.y === 'number' && p.x >= 0 && p.x < GRID_SIZE && p.y >= 0 && p.y < GRID_SIZE) {
-            grid[p.y * GRID_SIZE + p.x] = p.color;
+          if (typeof p.x === 'number') {
+            const pid = p.x;
+            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE) {
+              grid[pid] = p.color;
+            }
           }
         });
         renderCanvas();
@@ -408,9 +411,12 @@
         { event: '*', schema: 'public', table: 'pixels' },
         (payload) => {
           const p = payload.new;
-          if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-            grid[p.y * GRID_SIZE + p.x] = p.color;
-            renderCanvas();
+          if (p && typeof p.x === 'number') {
+            const pid = p.x;
+            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE) {
+              grid[pid] = p.color;
+              renderCanvas();
+            }
           }
         }
       )
