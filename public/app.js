@@ -28,6 +28,7 @@
 
   // Grid Data State
   const grid = new Array(GRID_SIZE * GRID_SIZE).fill('#FFFFFF');
+  const gridTimestamps = new Array(GRID_SIZE * GRID_SIZE).fill(0); // Track last update time
   let selectedColor = '#FF0000'; // Default red
 
   // Zoom & Pan State
@@ -99,7 +100,7 @@
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
         const color = grid[y * GRID_SIZE + x];
-        ctx.fillStyle = color;
+        ctx.fillStyle = color || '#FFFFFF'; // Fallback to white if undefined
         ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       }
     }
@@ -302,6 +303,7 @@
       
       // Update local state immediately for instant feedback
       grid[pixelId] = selectedColor;
+      gridTimestamps[pixelId] = Date.now();
       renderCanvas();
       startCooldownTimer(COOLDOWN_DURATION_MS);
 
@@ -380,15 +382,17 @@
     try {
       const { data, error } = await supabaseClient
         .from('pixels')
-        .select('x, y, color')
+        .select('x, color, updated_at')
         .limit(10000);
 
       if (data && Array.isArray(data)) {
         data.forEach(p => {
-          if (typeof p.x === 'number') {
+          if (typeof p.x === 'number' && p.color) {
             const pid = p.x;
-            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE) {
+            const updateTime = p.updated_at ? new Date(p.updated_at).getTime() : 0;
+            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE && updateTime >= gridTimestamps[pid]) {
               grid[pid] = p.color;
+              gridTimestamps[pid] = updateTime;
             }
           }
         });
@@ -411,10 +415,12 @@
         { event: '*', schema: 'public', table: 'pixels' },
         (payload) => {
           const p = payload.new;
-          if (p && typeof p.x === 'number') {
+          if (p && typeof p.x === 'number' && p.color) {
             const pid = p.x;
-            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE) {
+            const updateTime = p.updated_at ? new Date(p.updated_at).getTime() : 0;
+            if (pid >= 0 && pid < GRID_SIZE * GRID_SIZE && updateTime >= gridTimestamps[pid]) {
               grid[pid] = p.color;
+              gridTimestamps[pid] = updateTime;
               renderCanvas();
             }
           }
